@@ -1,25 +1,12 @@
-import base64
-from io import BytesIO
-from PIL import Image  # Cambia esta línea
 import streamlit as st
 import google.generativeai as genai
-import os
+from config import GEMINI_API_KEY
+import base64
 
-# Try to import GEMINI_API_KEY from config, but don't fail if it's not available
-try:
-    from config import GEMINI_API_KEY
-except ImportError:
-    # If config.py is not available, try to get the API key from environment variable
-    GEMINI_API_KEY = os.getenv("AIzaSyDOMI3iuGgkiBIxY-prmD9O9Z1ED2A7jOA")
-
-    if GEMINI_API_KEY is None:
-        # If environment variable is not set, use a default value
-        print("Warning: GEMINI_API_KEY not found in config or environment variables. Using default value.")
-        GEMINI_API_KEY = "your_default_api_key_here"
-
-# Configuración del modelo
+# Configuración de la API de Gemini
 genai.configure(api_key="AIzaSyDOMI3iuGgkiBIxY-prmD9O9Z1ED2A7jOA")
 
+# Configuración del modelo
 generation_config = {
     "temperature": 1,
     "top_p": 0.95,
@@ -27,141 +14,100 @@ generation_config = {
     "max_output_tokens": 8192,
     "response_mime_type": "text/plain",
 }
+
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     generation_config=generation_config,
+    # Ajuste de configuraciones de seguridad
+    # Ver https://ai.google.dev/gemini-api/docs/safety-settings
 )
 
-# Configuración del tema
-st.set_page_config(
-    page_title="E-WASTE",
-    page_icon="Logo 2.jpeg",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Función para iniciar una sesión de chat con el modelo
+def start_chat_session():
+    return model.start_chat(history=[])
 
-# Añade esta función al principio del archivo, después de las importaciones
-def image_to_base64(image):
-    buffered = BytesIO()
-    image.save(buffered, format="JPEG")
-    return base64.b64encode(buffered.getvalue()).decode()
-
-# Cargar y mostrar el logo
-logo = Image.open("Logo 2.jpeg")  # Reemplaza con la ruta real de tu logo
-st.markdown(
-    """
-    <style>
-    .logo-container {
-        position: absolute;
-        margin-top: 15px;
-        margin-left: 700px;
-        z-index: 500;
-    }
-    .logo-image {
-        border-radius: 50%;
-        box-shadow: 0 0 15px #06be17;
-        width: 200px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-st.markdown(
-    f"""
-    <div class="logo-container">
-        <img src="data:image/jpeg;base64,{image_to_base64(logo)}" class="logo-image" width="100">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
- # Aplicar un tema personalizado
-st.markdown("""
-    <style>
-    .stApp {
-        background: linear-gradient(135deg, rgb(10,30,40) 0%, rgb(15,20,50) 50%, rgb(5,3,30) 100%);
-    }
-    .stButton>button {
-        background-color: #06be17;
-        color: white;
-    }
-    body {
-        color: #06be17;
-    }
-    h1, h2, h3 {
-        color: #06be17;
-        text-shadow: 0 0 1px #06be17, 0 0 2px #06be17;
-        animation: subtle-neon 3s ease-in-out infinite alternate;
-    }
-    @keyframes subtle-neon {
-        from {
-            text-shadow: 0 0 1px #06be17, 0 0 2px #06be17;
-        }
-        to {
-            text-shadow: 0 0 2px #06be17, 0 0 3px #06be17, 0 0 4px #06be17;
-        }
-    }
-    .stSelectbox label {
-        color: #b0e0e6;
-    }
-    /* Ajuste adicional para mejorar la legibilidad */
-    .stMarkdown {
-        color: #ffffff;
-    }
-    /* Estilos para los inputs */
-    .stTextInput>div>div>input, .stSelectbox>div>div>div {
-        background: linear-gradient(135deg, rgb(10,30,40) 0%, rgb(15,20,50) 50%, rgb(5,3,30) 100%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.5) !important;
-        color: white !important;
-    }
-    .stTextInput>label, .stSelectbox>label {
-        color: white !important;
-    }
-    /* Ajuste para el texto del selectbox */
-    .stSelectbox>div>div>div>div {
-        color: white !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-def get_component_info(component_name):
-    chat_session = model.start_chat(history=[])
-    response = chat_session.send_message(f"Describe en español cómo extraer el {component_name} de una placa de circuito. La respuesta debe ser detallada y fácil de entender para un principiante.")
+# Función para enviar un mensaje al modelo y obtener una respuesta
+def get_response(chat_session, user_input):
+    response = chat_session.send_message(user_input)
     return response.text
 
-def main():
-    st.title("E-WASTE")
-    
-    stage = st.session_state.get('stage', 1)
-    
-    if stage == 1:
-        st.header("Etapa 1: Identificación del Componente")
-        component = st.selectbox("Selecciona un componente", ["conductor", "condensador", "puerto USB", "luces led", "circuito integrado", "resistencia", "capacitador", "microcontrolador", "puerto ethernet", "puerto de alimentación", "puerto cable", "semiconductor"])
+# Función para codificar la imagen en base64
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
-        if st.button("Siguiente"):
-            st.session_state['component_name'] = component
-            st.session_state['stage'] = 2
-            st.rerun()
-    
-    elif stage == 2:
-        st.header("Etapa 2: Extracción del Componente")
-        component_name = st.session_state.get('component_name', '')
-        if component_name:
-            st.write(f"Componente: {component_name}")
-            info = get_component_info(component_name)
-            st.markdown(info)  # Cambiado de st.write a st.markdown para mejor formato
-        
-            st.video("Video de extracción de componentes.mp4")  # Replace with actual video URL
-            st.write("Lista de herramientas necesarias:")
-            st.write("- Fuente de calor o cautín")
-            st.write("- Estaño")
-            st.write("- Pasta de soldar")
-            st.write("- Pasta Flux")
-            if st.button("¡Presiona aquí!"):
-                st.write("¡Cada componente es un nuevo desafío y una oportunidad de aprendizaje!")
-            if st.button("Regresar a la Etapa 1"):
-                st.session_state['stage'] = 1
-                st.stop()  # Cambia st.rerun() a st.experimental_rerun()
+# Configuración de la página
+st.set_page_config(layout="wide")
 
-if __name__ == "__main__":
-    main()
+# CSS personalizado con gradiente oscuro de fondo, títulos con gradiente rosado claro, y campo de entrada con fondo similar
+st.markdown("""
+<style>
+body {
+    color: white;
+    background: linear-gradient(to right, #4A0E4E, #170B3B);
+}
+.stApp {
+    background-image: url("data:image/png;base64,%s"), linear-gradient(to right, #4A0E4E, #170B3B);
+    background-position: right center, center;
+    background-repeat: no-repeat, repeat;
+    background-size: contain, cover;
+}
+.main .block-container {
+    max-width: 700px;
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+h1, h2, h3 {
+    background: linear-gradient(to right, #FFB6C1, #FFC0CB);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+}
+/* Estilo para el campo de entrada */
+.stTextInput > div > div > input {
+    background: linear-gradient(to right, #4A0E4E, #170B3B);
+    color: white;
+    border: 1px solid #FFB6C1;
+    border-radius: 5px;
+}
+.stTextInput > div > div > input:focus {
+    box-shadow: 0 0 5px #FFB6C1;
+}
+.stButton > button {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+.stMarkdown {
+    color: white;
+}
+</style>
+""" % get_base64_of_bin_file('Estef-AI.jpeg'), unsafe_allow_html=True)
+
+# Crear el contenedor del grid
+grid = st.container()
+
+# Usar columnas dentro del grid
+with grid:
+    col1, col2 = st.columns([2, 3])  # Ajustamos las proporciones de las columnas
+
+    with col1:
+        st.title("Estef-AI")
+        st.write("Bienvenido a Estef-AI, tu asistente virtual especializada en electrónica. Pregúntame lo que necesites saber sobre electrónica.")
+
+        # Campo de entrada de texto para el usuario
+        user_input = st.text_input("Escribe tu pregunta aquí:")
+
+        # Botón para enviar la pregunta
+        if st.button("Enviar"):
+            if user_input:
+                chat_session = start_chat_session()
+                response = get_response(chat_session, user_input)
+                st.write("Estef-AI dice:")
+                st.write(response)
+            else:
+                st.write("Por favor, escribe una pregunta.")
+
+    # La columna 2 se deja vacía para que la imagen de fondo sea visible
+    with col2:
+        pass  # No añadimos contenido aquí para dejar espacio a la imagen de fondo
